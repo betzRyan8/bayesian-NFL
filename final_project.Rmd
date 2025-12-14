@@ -44,7 +44,6 @@ df_nfl$book_over_prob = 0.5
 
 
 ```{r win probability model}
-#create win bernoulli logistic regression model
 win_model = stan_glm(
   home_win ~ spread_favorite + is_home_favorite,
   data = df_nfl,
