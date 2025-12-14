@@ -1,0 +1,211 @@
+---
+title: "final_project"
+author: "Ryan Betz"
+date: "2025-12-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r dataset}
+library(rstanarm)
+library(dplyr)
+library(bayesplot)
+library(ggplot2)
+
+df_nfl = read.csv('nfl_final.csv')
+
+df_nfl = df_nfl %>%
+  filter(
+    !is.na(over_result),
+    !is.na(over_under_line)
+  )
+
+
+head(df_nfl)
+```
+
+```{r model setup}
+#set seed for reproducibility
+set.seed(123)
+
+#set priors
+prior_coef = normal(location=0, scale=2.5)
+prior_int = normal(location=0, scale=5)
+
+#convert sportsbook odds into probabilities
+df_nfl$book_win_prob = 0.5
+df_nfl$book_cover_prob = 0.5
+df_nfl$book_over_prob = 0.5
+```
+
+
+```{r win probability model}
+#create win bernoulli logistic regression model
+win_model = stan_glm(
+  home_win ~ spread_favorite + is_home_favorite,
+  data = df_nfl,
+  family = binomial(link='logit'),
+  prior = prior_coef,
+  prior_intercept = prior_int,
+  chains = 4,
+  iter = 2000,
+  seed = 123
+)
+```
+
+```{r win model results}
+posterior_win = posterior_epred(win_model)
+
+df_nfl$predicted_win = colMeans(posterior_win)
+```
+
+
+```{r spread probability model}
+spread_model = stan_glm(
+  favorite_cover ~ spread_favorite + is_home_favorite,
+  data = df_nfl,
+  family = binomial(link='logit'),
+  prior = prior_coef,
+  prior_intercept = prior_int,
+  chains = 4,
+  iter = 2000,
+  seed = 123
+)
+```
+
+```{r spread model results}
+posterior_spread = posterior_epred(spread_model)
+
+df_nfl$predicted_spread = colMeans(posterior_spread)
+```
+
+
+```{r over/under probability model}
+over_model = stan_glm(
+  over_result ~ over_under_line,
+  data = df_nfl,
+  family = binomial(link='logit'),
+  prior = prior_coef,
+  prior_intercept = prior_int,
+  chains = 4,
+  iter = 2000,
+  seed = 123
+)
+```
+
+```{r over/under results}
+posterior_over = posterior_epred(over_model)
+
+df_nfl$predicted_over = colMeans(posterior_over)
+```
+
+```{r model comparison}
+
+brier_model_win = mean((df_nfl$predicted_win - df_nfl$home_win)^2)
+brier_book_win = mean((df_nfl$book_win_prob - df_nfl$home_win)^2)
+
+brier_model_cover = mean((df_nfl$predicted_spread - df_nfl$favorite_cover)^2)
+brier_book_cover = mean((df_nfl$book_cover_prob - df_nfl$favorite_cover)^2)
+
+brier_model_over = mean((df_nfl$predicted_over - df_nfl$over_result)^2)
+brier_book_over = mean((df_nfl$book_over_prob - df_nfl$over_result)^2)
+
+brier_results = data.frame(Outcome = c('Win', 'Spread', 'Over/Under'),
+                           model_brier = c(brier_model_win, brier_model_cover, brier_model_over),
+                           book_brier = c(brier_book_win, brier_book_cover, brier_book_over))
+
+brier_results
+```
+
+```{r brier bar chart}
+brier_matrix = rbind(
+  model = brier_results$model_brier,
+  book = brier_results$book_brier
+)
+
+barplot(
+  brier_matrix,
+  beside = TRUE,
+  col = c('lightblue', 'tomato'),
+  names.arg = brier_results$Outcome,
+  ylab = 'Brier Score',
+  main = 'Comparison: Model vs. Sportsbook',
+  ylim = c(0, 0.35)
+  
+)
+
+legend('topright', legend = c('model', 'sportsbook'), fill = c('lightblue', 'tomato'))
+```
+
+
+```{r posterior summary plots}
+post_win = as.matrix(win_model)
+
+mcmc_intervals(
+  post_win,
+  pars = c('(Intercept)', 'spread_favorite', 'is_home_favorite')
+) + labs(
+  title='Win Model',
+  x='Coefficient Value'
+)
+
+post_spread = as.matrix(spread_model)
+
+mcmc_intervals(
+  post_spread,
+  pars = c('(Intercept)', 'spread_favorite', 'is_home_favorite')
+) + labs(
+  title='Spread Model',
+  x='Coefficient Value'
+)
+
+post_over = as.matrix(over_model)
+
+mcmc_intervals(
+  post_over,
+  pars = c('(Intercept)', 'over_under_line')
+) + labs(
+  title='Over Model',
+  x='Coefficient Value'
+)
+```
+
+```{r trace plots}
+mcmc_trace (
+  win_model,
+  pars = c('(Intercept)', 'spread_favorite', 'is_home_favorite')
+)
+
+mcmc_trace (
+  spread_model,
+  pars = c('(Intercept)', 'spread_favorite', 'is_home_favorite')
+)
+
+mcmc_trace (
+  over_model,
+  pars = c('(Intercept)', 'over_under_line')
+)
+
+
+```
+
+```{r posterior predictive check}
+pp_check(win_model, plotfun = 'bars')
+
+pp_check(spread_model, plotfun = 'bars')
+
+pp_check(over_model, plotfun = 'bars')
+
+```
+
+```{r summary of models}
+summary(win_model)
+summary(spread_model)
+summary(over_model)
+
+```
+
