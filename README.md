@@ -37,8 +37,8 @@ across all three models for comparison.
 ---
 
 ## Reproducibility
-All data prepocessing steps were conducted in Python using the `Pandas` library.
-All statistcal modeling and analysis were conducted in R using the `rstanarm` package.
+All data preprocessing steps were conducted in Python using the `Pandas` library.
+All statistical modeling and analysis were conducted in R using the `rstanarm` package.
 
 ## Author
 **Ryan Betz**
